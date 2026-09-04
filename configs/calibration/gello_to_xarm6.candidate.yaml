@@ -1,0 +1,33 @@
+joint_names:
+- shoulder_pan
+- shoulder_lift
+- elbow_flex
+- wrist_1
+- wrist_2
+- wrist_3
+counts_per_turn: 4096
+sign:
+- -1.0
+- 1.0
+- 1.0
+- -1.0
+- -1.0
+- -1.0
+gain_rad_per_turn:
+- 7.113544900662253
+- 4.498906961702128
+- 10.450849391304349
+- 4.642563324675325
+- 4.386327486238531
+- 5.60676542745098
+joint_deadband_raw:
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+gripper:
+  motor_name: gripper
+  raw_closed: 2438
+  raw_open: 1857

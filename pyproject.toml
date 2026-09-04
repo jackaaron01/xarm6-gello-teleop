@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xarm6-gello-teleop"
+version = "0.1.0"
+description = "Standalone, safety-first Dynamixel GELLO to xArm6 teleoperation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+  "dynamixel-sdk>=3.7.31",
+  "numpy>=1.26",
+  "PyYAML>=6.0",
+  "xarm-python-sdk>=1.18.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+recording = ["h5py>=3.10", "opencv-python>=4.8"]
+
+[project.scripts]
+xarm6-gello = "xarm6_gello_teleop.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

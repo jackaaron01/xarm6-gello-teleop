@@ -1,0 +1,14 @@
+# 不填真实 IP 到版本库；通过 --xarm-ip 提供。
+joint_lower_rad: [-6.283, -2.059, -3.927, -6.283, -1.692, -6.283]
+joint_upper_rad: [6.283, 2.094, 0.191, 6.283, 3.142, 6.283]
+max_delta_rad: 0.035
+max_velocity_rad_s: 0.70
+command_rate_hz: 30
+leader_timeout_s: 0.20
+gripper:
+  # 已在无负载低速测试中确认：pulse 0 为闭合，850 为张开。
+  closed_pulse: 0
+  open_pulse: 850
+  # 首次遥操作保留标定时已验证的低速值；稳定后再评估是否提高。
+  speed: 200
+  minimum_delta_pulse: 8

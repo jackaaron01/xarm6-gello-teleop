@@ -1,0 +1,12 @@
+# 另一套当前常见的 11--17 ID 编排；只选其中一个 profile。
+serial_port: /dev/ttyUSB0
+baud_rate: 1000000
+counts_per_turn: 4096
+motors:
+  - {name: shoulder_pan, id: 11, model: xl330-m288}
+  - {name: shoulder_lift, id: 12, model: xl330-m288}
+  - {name: elbow_flex, id: 13, model: xl330-m288}
+  - {name: wrist_1, id: 14, model: xl330-m288}
+  - {name: wrist_2, id: 15, model: xl330-m288}
+  - {name: wrist_3, id: 16, model: xl330-m288}
+  - {name: gripper, id: 17, model: xl330-m288}

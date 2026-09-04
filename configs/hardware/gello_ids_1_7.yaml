@@ -1,0 +1,13 @@
+# 示例 profile：J1--J6 分别对应 ID 1--6，扳机对应 ID 7。
+# 复制为 gello_ids_1_7.local.yaml 后，填入本机稳定的 FTDI 设备链接。
+serial_port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_EXAMPLE-if00-port0
+baud_rate: 1000000
+counts_per_turn: 4096
+motors:
+  - {name: shoulder_pan, id: 1, model: xl330-m288}
+  - {name: shoulder_lift, id: 2, model: xl330-m288}
+  - {name: elbow_flex, id: 3, model: xl330-m288}
+  - {name: wrist_1, id: 4, model: xl330-m288}
+  - {name: wrist_2, id: 5, model: xl330-m288}
+  - {name: wrist_3, id: 6, model: xl330-m288}
+  - {name: gripper, id: 7, model: xl330-m077}

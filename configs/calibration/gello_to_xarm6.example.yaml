@@ -1,0 +1,12 @@
+# 示例仅说明格式，不能控制真实机械臂。请由校准流程生成实际文件。
+joint_names: [shoulder_pan, shoulder_lift, elbow_flex, wrist_1, wrist_2, wrist_3]
+counts_per_turn: 4096
+# target_rad = session_zero_xarm_rad + sign * gain_rad_per_turn * raw_delta / counts_per_turn
+sign: [1, 1, 1, 1, 1, 1]
+gain_rad_per_turn: [6.283185307, 6.283185307, 6.283185307, 6.283185307, 6.283185307, 6.283185307]
+# 被动 leader 的未触及关节可能有小幅随动；小于等于此 raw 变化量时不映射到 xArm。
+joint_deadband_raw: [20, 20, 20, 20, 20, 20]
+gripper:
+  motor_name: gripper
+  raw_closed: 0
+  raw_open: 1024

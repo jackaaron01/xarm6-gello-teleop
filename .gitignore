@@ -1,0 +1,15 @@
+# Local Python environments and test caches
+.conda/
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Machine-specific measurements and calibration captures
+results/
+configs/hardware/*.local.yaml
+
+# Editor and operating-system files
+.DS_Store
+.vscode/
