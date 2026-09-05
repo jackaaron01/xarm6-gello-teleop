@@ -36,3 +36,23 @@ def test_default_servo_rate_and_velocity_are_smooth_but_usable() -> None:
     assert MODULE.DEFAULT_MAX_DELTA_RAD == 0.004
     assert MODULE.DEFAULT_MAX_VELOCITY_RAD_S == 0.20
     assert MODULE.MAX_ALLOWED_VELOCITY_RAD_S == 0.25
+
+
+def test_long_send_event_keeps_only_control_data() -> None:
+    zero_raw = {name: 0 for name in MODULE.JOINT_NAMES}
+    raw = {**zero_raw, "wrist_3": 123}
+    requested = MODULE.TeleopTarget((0.0, 0.0, 0.0, 0.0, 0.0, 0.6), 0.0)
+    limited = MODULE.TeleopTarget((0.0, 0.0, 0.0, 0.0, 0.0, 0.2), 0.0)
+
+    event = MODULE.long_send_event(7, 1.2345678, "wrist_3", raw, zero_raw, requested, limited, 0.045)
+
+    assert event == {
+        "tick": 7,
+        "elapsed_s": 1.234568,
+        "axis": "wrist_3",
+        "leader_raw": 123,
+        "leader_raw_delta": 123,
+        "requested_joint_rad": 0.6,
+        "limited_joint_rad": 0.2,
+        "send_ms": 45.0,
+    }

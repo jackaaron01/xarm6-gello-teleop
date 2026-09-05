@@ -95,6 +95,7 @@ J6          -1      5.6068
 - `scripts/teleop_six_axis_gated.py`：Phase-A 六轴顺序门控测试。J1--J6 均可选择，但同一时刻只允许一个 leader 轴改变目标；停住 0.35 秒后锁存该目标，再选择下一轴。夹爪始终冻结。
 - xArm 进入 servo mode 后会等待控制箱报告实际 mode=1，再发送第一条关节目标，避免启动阶段的 `mode: 1 (0)` SDK 警告。
 - `safe` 与 `responsive` 运动档位：默认 `safe` 保持 `0.004 rad/周期`、`0.20 rad/s`；显式 `--profile responsive` 才使用 `0.005 rad/周期`、`0.25 rad/s`。两项限制必须同步提高，单独传入 `--max-velocity-rad-s 0.25` 不会绕过 `safe` 档的步长上限。
+- `teleop_single_axis.py --diagnostics-output`：可选地将超过发送时延阈值的周期写入本地 JSON，包含 tick、leader raw 增量、请求目标、限幅目标和发送耗时；不增加任何硬件读取或控制命令。
 
 普通 `xarm6-gello teleop` 仍不可直接使用：它尚未接入 passive leader 的主导关节门控，不要运行。
 
@@ -126,6 +127,7 @@ max velocity：0.20 rad/s
 - J2：可动，40 Hz 时实际 39.7 Hz，链路稳定。
 - J4：可动，50 Hz/0.20 rad/s 时稳定通过。
 - J6：方向正确。50 Hz/0.15 rad/s 时仍有可感知延迟（最大发送 186.23 ms）；提高到 0.20 rad/s 后复测实际 49.7 Hz、超时 1/498、leader 读取平均 2.05 ms、xArm servo 发送平均 1.46 ms（最大 48.43 ms），可纳入受门控保护的六轴测试。
+- J6 responsive：方向正确、仅有轻微卡顿、无其它异常；但实际 45.5 Hz、超时 9/456、xArm servo 最大 183.41 ms，未通过响应档的性能验收。六轴门控继续使用 `safe` 档；需先采集长尾诊断再决定 J6 专属策略。
 - 六轴顺序门控：J1--J6 已在同一 20 秒 session 内依次完成“选择→锁存”；实际 48.5 Hz、超时 6/971、leader 读取平均 2.06 ms、xArm servo 发送平均 2.00 ms。期间存在一次 183.84 ms 发送长尾，脚本已丢弃过期节拍；该模式目前仅作为受控顺序测试，不开放自由同时六轴跟随。
 - 六轴顺序门控的操作者验收：J1--J6 方向全部正确，锁存后姿态保持，无漂移或异常动作；仅存在轻微延迟感。当前 `0.20 rad/s` 与每周期 `0.004 rad` 限制共同形成约 `0.20 rad/s` 的实际速度上限，后续响应优化必须同时调整两者并重新做小行程安全验证。
 - J3：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 48.4 Hz，leader 读取平均 2.06 ms，超时 3/484。
@@ -139,9 +141,9 @@ max velocity：0.20 rad/s
 4. 单轴测试结束后 xArm 会停在最终目标，不会自动回 P0；下一次前由 xArm Studio 低速回到安全姿态。
 5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
 
-## 下一步：responsive 档小行程复核
+## 下一步：J6 responsive 长尾诊断
 
-J1--J6 已完成单轴验证与一次完整的顺序门控 session。下一步先以 `responsive` 档仅复测 J1 和 J6 的小行程响应；确认无方向错误、锁存漂移、抖动或明显长尾恶化后，再把该档位用于六轴顺序门控。它不是自由的六轴同时运动。
+J1--J6 已完成单轴验证与一次完整的 safe 档顺序门控 session。J6 在 responsive 档出现轻微卡顿与长尾恶化，因此不要将 responsive 用于六轴门控；先采集控制路径数据，判断长尾是否对应特定 raw/目标变化。它不是自由的六轴同时运动。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
@@ -153,10 +155,11 @@ cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
   --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
   --rate-hz 50 \
-  --profile responsive
+  --profile responsive \
+  --diagnostics-output results/diagnostics/j6_responsive.json
 ```
 
-先将 `--axis shoulder_pan` 改为 `--axis wrist_3` 复测 J6。两轴通过后才运行六轴脚本并追加 `--profile responsive`。若主导轴识别错误、方向不符、锁存后姿态漂移或出现明显卡顿，立即 Ctrl-C。
+将 `--axis shoulder_pan` 改为 `--axis wrist_3`；脚本结束后把 JSON 与终端统计一并提供。若方向不符、明显卡顿加重或发生异常动作，立即 Ctrl-C。J6 原因未明确前，不运行 `teleop_six_axis_gated.py --profile responsive`。
 
 ## 后续架构路线
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import signal
 import time
 from math import copysign
@@ -12,7 +13,12 @@ from pathlib import Path
 from xarm6_gello_teleop.config import LeaderConfig, RelativeCalibration, XArmConfig
 from xarm6_gello_teleop.drivers.dynamixel_leader import DynamixelLeader
 from xarm6_gello_teleop.drivers.xarm6 import XArm6
-from xarm6_gello_teleop.motion_profiles import MOTION_PROFILES, SAFE_PROFILE, motion_profile
+from xarm6_gello_teleop.motion_profiles import (
+    MOTION_PROFILES,
+    RESPONSIVE_PROFILE,
+    SAFE_PROFILE,
+    motion_profile,
+)
 from xarm6_gello_teleop.safety import JointSafetyLimiter
 from xarm6_gello_teleop.types import JOINT_NAMES, TeleopTarget
 
@@ -22,6 +28,7 @@ from xarm6_gello_teleop.types import JOINT_NAMES, TeleopTarget
 DEFAULT_RATE_HZ = 100.0
 DEFAULT_MAX_DELTA_RAD = SAFE_PROFILE.max_delta_rad
 DEFAULT_MAX_VELOCITY_RAD_S = SAFE_PROFILE.max_velocity_rad_s
+MAX_ALLOWED_VELOCITY_RAD_S = RESPONSIVE_PROFILE.max_velocity_rad_s
 
 
 def requested_axis_target(
@@ -47,6 +54,29 @@ def requested_axis_target(
     joints = list(zero_xarm)
     joints[axis_index] += joint_delta
     return TeleopTarget(tuple(joints), 0.0)
+
+
+def long_send_event(
+    tick: int,
+    elapsed_s: float,
+    axis: str,
+    raw: dict[str, int],
+    zero_raw: dict[str, int],
+    requested: TeleopTarget,
+    limited: TeleopTarget,
+    send_elapsed_s: float,
+) -> dict[str, float | int | str]:
+    axis_index = JOINT_NAMES.index(axis)
+    return {
+        "tick": tick,
+        "elapsed_s": round(elapsed_s, 6),
+        "axis": axis,
+        "leader_raw": int(raw[axis]),
+        "leader_raw_delta": int(raw[axis] - zero_raw[axis]),
+        "requested_joint_rad": round(requested.joints_rad[axis_index], 6),
+        "limited_joint_rad": round(limited.joints_rad[axis_index], 6),
+        "send_ms": round(1000 * send_elapsed_s, 3),
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,6 +105,17 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_RATE_HZ,
         help="servo 目标流频率，默认 100 Hz，允许范围 20--100 Hz；路由器映射建议先用 40 Hz",
     )
+    parser.add_argument(
+        "--diagnostics-output",
+        type=Path,
+        help="可选：保存超过阈值的 xArm 发送周期 JSON；不会额外读取或控制硬件",
+    )
+    parser.add_argument(
+        "--long-send-threshold-ms",
+        type=float,
+        default=30.0,
+        help="记录 xArm 发送长尾的阈值，默认 30 ms",
+    )
     return parser.parse_args()
 
 
@@ -84,8 +125,10 @@ def main() -> None:
     max_velocity_rad_s = profile.max_velocity_rad_s if args.max_velocity_rad_s is None else args.max_velocity_rad_s
     if ":" in args.xarm_ip:
         raise ValueError("--xarm-ip 只能填写 IP，例如 192.168.1.100；不要附加 :502")
-    if args.duration_s <= 0 or not 0 < max_velocity_rad_s <= profile.max_velocity_rad_s:
-        raise ValueError("duration-s 必须为正数，max-velocity-rad-s 必须在所选 profile 的范围内")
+    if args.duration_s <= 0 or args.long_send_threshold_ms <= 0:
+        raise ValueError("duration-s 和 long-send-threshold-ms 必须为正数")
+    if not 0 < max_velocity_rad_s <= profile.max_velocity_rad_s:
+        raise ValueError("max-velocity-rad-s 必须在所选 profile 的范围内")
     if not 20 <= args.rate_hz <= 100:
         raise ValueError("rate-hz 必须在 20--100 Hz 内")
     axis_index = JOINT_NAMES.index(args.axis)
@@ -139,6 +182,7 @@ def main() -> None:
     xarm_send_total_s = 0.0
     leader_read_max_s = 0.0
     xarm_send_max_s = 0.0
+    long_send_events: list[dict[str, float | int | str]] = []
     while time.monotonic() - started_s < args.duration_s:
         loop_s = time.monotonic()
         read_started_s = time.monotonic()
@@ -153,6 +197,19 @@ def main() -> None:
         send_elapsed_s = time.monotonic() - send_started_s
         xarm_send_total_s += send_elapsed_s
         xarm_send_max_s = max(xarm_send_max_s, send_elapsed_s)
+        if send_elapsed_s * 1000 >= args.long_send_threshold_ms:
+            long_send_events.append(
+                long_send_event(
+                    tick_count + 1,
+                    time.monotonic() - started_s,
+                    args.axis,
+                    raw,
+                    zero_raw,
+                    requested,
+                    target,
+                    send_elapsed_s,
+                )
+            )
         previous = target
         previous_tick_s = loop_s
         tick_count += 1
@@ -170,6 +227,26 @@ def main() -> None:
     xarm.disconnect()
     leader.disconnect()
     elapsed_s = time.monotonic() - started_s
+    if args.diagnostics_output is not None:
+        diagnostics = {
+            "axis": args.axis,
+            "profile": profile.name,
+            "rate_hz": args.rate_hz,
+            "max_delta_rad": profile.max_delta_rad,
+            "max_velocity_rad_s": max_velocity_rad_s,
+            "long_send_threshold_ms": args.long_send_threshold_ms,
+            "actual_rate_hz": tick_count / elapsed_s,
+            "missed_deadlines": missed_deadlines,
+            "tick_count": tick_count,
+            "leader_read_average_ms": 1000 * leader_read_total_s / tick_count,
+            "leader_read_max_ms": 1000 * leader_read_max_s,
+            "xarm_send_average_ms": 1000 * xarm_send_total_s / tick_count,
+            "xarm_send_max_ms": 1000 * xarm_send_max_s,
+            "long_send_events": long_send_events,
+        }
+        args.diagnostics_output.parent.mkdir(parents=True, exist_ok=True)
+        args.diagnostics_output.write_text(json.dumps(diagnostics, indent=2) + "\n", encoding="utf-8")
+        print(f"长尾诊断已保存：{args.diagnostics_output}（事件数 {len(long_send_events)}）")
     print(
         f"单轴测试时间结束，已停止 xArm；未发送任何夹爪命令。实际 {tick_count / elapsed_s:.1f} Hz，"
         f"超时周期 {missed_deadlines}/{tick_count}。\n"

@@ -211,6 +211,8 @@ python scripts/gello_joint_direction_check.py \
 
 默认 `safe` 档位限制为每周期 `0.004 rad`、最高 `0.20 rad/s`。在完成各轴的 safe 档位验证后，才可显式使用 `--profile responsive`，将两项限制同步提高到每周期 `0.005 rad`、最高 `0.25 rad/s`；先对 J1、J6 做小行程单轴复测。仅传入 `--max-velocity-rad-s 0.25` 不会提高 safe 档的每周期步长上限。
 
+若某一轴在响应档出现卡顿，可给单轴脚本添加 `--diagnostics-output results/diagnostics/<axis>.json`。该可选日志只记录超过 30 ms 的 xArm 发送长尾及其控制输入，不会在循环中额外读取机器人状态或发送额外命令。
+
 ## 设计约束
 
 - 内部关节单位一律为弧度；只在 DXL 驱动边界使用 raw counts。
