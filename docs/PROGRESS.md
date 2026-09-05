@@ -125,7 +125,7 @@ max velocity：0.20 rad/s
 - J4：可动，50 Hz/0.20 rad/s 时稳定通过。
 - J6：能动、`diagnose-xarm` 无错误，但 servo 调用存在明显长尾（最大 457 ms、178 ms 等）；首版暂时固定 J6，不纳入实时控制。
 - J3：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 48.4 Hz，leader 读取平均 2.06 ms，超时 3/484。
-- J5：只读预览的主导关节门控通过；首次实机单轴测试发现方向相反，已将候选配置的 `sign` 翻转为 `+1`，等待低速复测。
+- J5：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 50.0 Hz，零超时（0/500），leader 读取平均 2.06 ms，xArm servo 发送平均 1.41 ms，最大 12.47 ms。
 
 ## 当前安全边界
 
@@ -133,17 +133,17 @@ max velocity：0.20 rad/s
 2. 本地测试用真实 IP；远程使用路由器映射时从 `--rate-hz 40` 开始，不要直接要求 100 Hz。
 3. 仅执行 `teleop_single_axis.py` 的已验证轴；不要执行普通 `teleop`。
 4. 单轴测试结束后 xArm 会停在最终目标，不会自动回 P0；下一次前由 xArm Studio 低速回到安全姿态。
-5. J6 当前冻结；夹爪当前冻结。
+5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。当前 J1--J5 已通过单轴实机验证；J6 因历史 servo 长尾暂时冻结，夹爪也暂时冻结。
 
-## 下一步：J5 低速单轴复测
+## 下一步：J6 延迟诊断与六轴联动准备
 
-J3/J5 的只读预览均已通过，J3 实机复测也已通过。先在 xArm Studio 低速回到安全姿态，再以 J5 的已修正方向进行低速单轴复测：
+J1--J5 已完成单轴实机验证。下一步先诊断 J6 的历史 servo 长尾，再把它纳入受主导关节门控保护的六轴 Phase-A 联动测试；夹爪仍不接入该测试。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
 
 .conda/bin/python scripts/teleop_single_axis.py \
-  --axis wrist_2 \
+  --axis wrist_3 \
   --leader configs/hardware/gello_ids_1_7.local.yaml \
   --xarm-ip <XARM_IP> \
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
@@ -152,7 +152,7 @@ cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
   --max-velocity-rad-s 0.15
 ```
 
-控制箱应在程序打印“单轴低速测试已开始”前完成 mode=1 确认。若方向仍不符，立即 Ctrl-C，不继续测试其它轴。
+控制箱应在程序打印“单轴低速测试已开始”前完成 mode=1 确认。只有 J6 在稳定频率与可接受长尾下通过后，才开放六轴 Phase-A 联动；若方向不符或再次出现明显卡顿，立即 Ctrl-C。
 
 ## 后续架构路线
 
