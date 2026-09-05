@@ -134,6 +134,7 @@ max velocity：0.20 rad/s
 - 六轴顺序门控的操作者验收：J1--J6 方向全部正确，锁存后姿态保持，无漂移或异常动作；仅存在轻微延迟感。当前 `0.20 rad/s` 与每周期 `0.004 rad` 限制共同形成约 `0.20 rad/s` 的实际速度上限，后续响应优化必须同时调整两者并重新做小行程安全验证。
 - 六轴 responsive：40 秒 session 中 J1--J6 均至少完成一次“选择→锁存”，允许同一轴在后续再次被选择；脚本正常按时退出。实际 48.3 Hz、超时 11/1933、leader 读取平均 2.05 ms、xArm servo 发送平均 2.13 ms，但最大 198.57 ms；responsive 六轴功能可用，控制箱偶发长尾仍需保守看待。该运行未触发 Ctrl-C，停止修复尚未做实机回归验证。
 - 软件停止回归：responsive 六轴 session 中单次 Ctrl-C 后，脚本打印停止请求、停止发送新目标、执行 xArm stop 并正常返回终端；实际 50.0 Hz、零超时（0/618）、leader 读取平均 2.06 ms、xArm servo 发送平均 1.58 ms（最大 15.16 ms）。停止修复已通过实机验证。
+- 显式同时多轴 J1+J2：方向正确，J3--J6 保持锁定，无其它异常；操作者感到轻微卡顿。实际 49.5 Hz、超时 2/496、leader 读取平均 2.07 ms、xArm servo 发送平均 1.57 ms（最大 55.47 ms）。safe 档下通过，继续验证其它关节组合。
 - J3：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 48.4 Hz，leader 读取平均 2.06 ms，超时 3/484。
 - J5：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 50.0 Hz，零超时（0/500），leader 读取平均 2.06 ms，xArm servo 发送平均 1.41 ms，最大 12.47 ms。
 
@@ -146,15 +147,15 @@ max velocity：0.20 rad/s
 5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
 6. `Ctrl-C` 是软件受控停止请求，不代替实体急停。若 xArm 仍在运动、终端卡住或状态不明确，优先使用实体急停或 xArm Studio Stop；确认机器人停止后，再在另一终端用 `pgrep -af teleop_six_axis_gated.py` 找到进程并以 `kill -KILL <PID>` 清理卡住的 Python 进程。
 
-## 下一步：显式双轴同时跟随测试
+## 下一步：显式双轴组合覆盖
 
-Phase-A 的 J1--J6 单轴映射、safe/responsive 顺序门控和单次 Ctrl-C 受控停止均已通过实机验证。现在开始验证真正的同时多轴跟随，但不能直接启用普通全轴映射：被动 leader 的副轴耦合会被误解为操作者意图。先明确选择 J1+J2，未选择的四轴必须保持锁定；夹爪仍冻结。
+Phase-A 的 J1--J6 单轴映射、safe/responsive 顺序门控和单次 Ctrl-C 受控停止均已通过实机验证。J1+J2 显式同时跟随已通过。继续测试 J3+J4、J5+J6；被动 leader 的副轴耦合会被误解为操作者意图，因此暂不直接启用普通全轴映射，夹爪仍冻结。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
 
 .conda/bin/python scripts/teleop_multi_axis_limited.py \
-  --axes shoulder_pan,shoulder_lift \
+  --axes elbow_flex,wrist_1 \
   --leader configs/hardware/gello_ids_1_7.local.yaml \
   --xarm-ip <XARM_IP> \
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
@@ -163,7 +164,7 @@ cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
   --profile safe
 ```
 
-先同时、小幅移动 J1 与 J2；确认它们均方向正确、其它四轴不动且 Ctrl-C 正常后，再测试其它两轴组合。仅当所有组合验证完成，才会创建“显式六轴”受限测试；这仍不同于不加选择的自由全轴映射。
+先同时、小幅移动 J3 与 J4；确认它们均方向正确、其它四轴不动且 Ctrl-C 正常后，再将 `--axes` 改为 `wrist_2,wrist_3` 测 J5+J6。仅当所有组合验证完成，才会创建“显式六轴”受限测试；这仍不同于不加选择的自由全轴映射。
 
 ## 后续架构路线
 
