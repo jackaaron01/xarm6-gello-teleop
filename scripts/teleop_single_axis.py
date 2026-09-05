@@ -12,6 +12,7 @@ from pathlib import Path
 from xarm6_gello_teleop.config import LeaderConfig, RelativeCalibration, XArmConfig
 from xarm6_gello_teleop.drivers.dynamixel_leader import DynamixelLeader
 from xarm6_gello_teleop.drivers.xarm6 import XArm6
+from xarm6_gello_teleop.motion_profiles import MOTION_PROFILES, SAFE_PROFILE, motion_profile
 from xarm6_gello_teleop.safety import JointSafetyLimiter
 from xarm6_gello_teleop.types import JOINT_NAMES, TeleopTarget
 
@@ -19,9 +20,8 @@ from xarm6_gello_teleop.types import JOINT_NAMES, TeleopTarget
 # Servo mode is streamed at 50 Hz so the controller receives smooth, small
 # setpoint updates rather than the visibly stepped 10 Hz commands used first.
 DEFAULT_RATE_HZ = 100.0
-DEFAULT_MAX_DELTA_RAD = 0.004
-DEFAULT_MAX_VELOCITY_RAD_S = 0.20
-MAX_ALLOWED_VELOCITY_RAD_S = 0.25
+DEFAULT_MAX_DELTA_RAD = SAFE_PROFILE.max_delta_rad
+DEFAULT_MAX_VELOCITY_RAD_S = SAFE_PROFILE.max_velocity_rad_s
 
 
 def requested_axis_target(
@@ -58,10 +58,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--xarm-ip", required=True, help="只填 IP，不要加 :502")
     parser.add_argument("--duration-s", type=float, default=10.0, help="最长测试时长，默认 10 秒")
     parser.add_argument(
+        "--profile",
+        choices=tuple(MOTION_PROFILES),
+        default=SAFE_PROFILE.name,
+        help="safe=0.004 rad/周期、0.20 rad/s；responsive=0.005 rad/周期、0.25 rad/s",
+    )
+    parser.add_argument(
         "--max-velocity-rad-s",
         type=float,
-        default=DEFAULT_MAX_VELOCITY_RAD_S,
-        help="单轴最高目标变化率，默认 0.20 rad/s，安全上限为 0.25",
+        default=None,
+        help="覆盖所选 profile 的最高目标变化率；不得高于该 profile 的上限",
     )
     parser.add_argument(
         "--rate-hz",
@@ -74,10 +80,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    profile = motion_profile(args.profile)
+    max_velocity_rad_s = profile.max_velocity_rad_s if args.max_velocity_rad_s is None else args.max_velocity_rad_s
     if ":" in args.xarm_ip:
         raise ValueError("--xarm-ip 只能填写 IP，例如 192.168.1.100；不要附加 :502")
-    if args.duration_s <= 0 or not 0 < args.max_velocity_rad_s <= MAX_ALLOWED_VELOCITY_RAD_S:
-        raise ValueError("duration-s 必须为正数，max-velocity-rad-s 必须在 (0, 0.25] 内")
+    if args.duration_s <= 0 or not 0 < max_velocity_rad_s <= profile.max_velocity_rad_s:
+        raise ValueError("duration-s 必须为正数，max-velocity-rad-s 必须在所选 profile 的范围内")
     if not 20 <= args.rate_hz <= 100:
         raise ValueError("rate-hz 必须在 20--100 Hz 内")
     axis_index = JOINT_NAMES.index(args.axis)
@@ -88,15 +96,16 @@ def main() -> None:
     limiter = JointSafetyLimiter(
         xarm_config.joint_lower_rad,
         xarm_config.joint_upper_rad,
-        DEFAULT_MAX_DELTA_RAD,
-        args.max_velocity_rad_s,
+        profile.max_delta_rad,
+        max_velocity_rad_s,
     )
 
     print("危险边界：此命令会使能 xArm，并只向一个关节发送低速 servo 目标。")
     print("其它五轴始终锁定在启动时的位置；夹爪不会被使能或发送命令。")
     print(
-        f"测试轴：{args.axis}；{args.rate_hz:.0f} Hz 目标流；最高目标变化率 "
-        f"{args.max_velocity_rad_s:.2f} rad/s；最长 {args.duration_s:.0f} 秒。"
+        f"测试轴：{args.axis}；{profile.name} 档；{args.rate_hz:.0f} Hz 目标流；每周期最多 "
+        f"{profile.max_delta_rad:.3f} rad；最高目标变化率 {max_velocity_rad_s:.2f} rad/s；"
+        f"最长 {args.duration_s:.0f} 秒。"
     )
     print("请清空工作区，确认 xArm reduced mode 与实体急停均已就绪。")
     input("确认现场安全后按 Enter，连接并执行只读预检：")

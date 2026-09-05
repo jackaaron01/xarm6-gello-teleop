@@ -94,6 +94,7 @@ J6          -1      5.6068
 - `scripts/teleop_single_axis.py`：首次实机单轴 servo 测试。只允许指定 xArm 轴运动，锁定其它五轴，夹爪不动作；两次 Enter 确认、自动停止、Ctrl-C 停止。
 - `scripts/teleop_six_axis_gated.py`：Phase-A 六轴顺序门控测试。J1--J6 均可选择，但同一时刻只允许一个 leader 轴改变目标；停住 0.35 秒后锁存该目标，再选择下一轴。夹爪始终冻结。
 - xArm 进入 servo mode 后会等待控制箱报告实际 mode=1，再发送第一条关节目标，避免启动阶段的 `mode: 1 (0)` SDK 警告。
+- `safe` 与 `responsive` 运动档位：默认 `safe` 保持 `0.004 rad/周期`、`0.20 rad/s`；显式 `--profile responsive` 才使用 `0.005 rad/周期`、`0.25 rad/s`。两项限制必须同步提高，单独传入 `--max-velocity-rad-s 0.25` 不会绕过 `safe` 档的步长上限。
 
 普通 `xarm6-gello teleop` 仍不可直接使用：它尚未接入 passive leader 的主导关节门控，不要运行。
 
@@ -138,23 +139,24 @@ max velocity：0.20 rad/s
 4. 单轴测试结束后 xArm 会停在最终目标，不会自动回 P0；下一次前由 xArm Studio 低速回到安全姿态。
 5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
 
-## 下一步：六轴门控的操作感与长尾复核
+## 下一步：responsive 档小行程复核
 
-J1--J6 已完成单轴验证与一次完整的顺序门控 session。下一步重复该脚本，重点观察实际操作中是否存在方向错误、明显延迟或锁存后的姿态漂移；同时继续统计控制箱偶发发送长尾。它不是自由的六轴同时运动。
+J1--J6 已完成单轴验证与一次完整的顺序门控 session。下一步先以 `responsive` 档仅复测 J1 和 J6 的小行程响应；确认无方向错误、锁存漂移、抖动或明显长尾恶化后，再把该档位用于六轴顺序门控。它不是自由的六轴同时运动。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
 
-.conda/bin/python scripts/teleop_six_axis_gated.py \
+.conda/bin/python scripts/teleop_single_axis.py \
+  --axis shoulder_pan \
   --leader configs/hardware/gello_ids_1_7.local.yaml \
   --xarm-ip <XARM_IP> \
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
   --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
   --rate-hz 50 \
-  --max-velocity-rad-s 0.20
+  --profile responsive
 ```
 
-控制箱应在程序打印“六轴门控测试已开始”前完成 mode=1 确认。每次在各轴上缓慢、小幅移动；若主导轴识别错误、方向不符、锁存后姿态漂移或出现明显卡顿，立即 Ctrl-C。
+先将 `--axis shoulder_pan` 改为 `--axis wrist_3` 复测 J6。两轴通过后才运行六轴脚本并追加 `--profile responsive`。若主导轴识别错误、方向不符、锁存后姿态漂移或出现明显卡顿，立即 Ctrl-C。
 
 ## 后续架构路线
 
