@@ -93,6 +93,7 @@ J6          -1      5.6068
 - `scripts/preview_mapping.py`：只读映射预览；使用 Phase-A 主导关节门控，抑制被动 leader 副轴随动。
 - `scripts/teleop_single_axis.py`：首次实机单轴 servo 测试。只允许指定 xArm 轴运动，锁定其它五轴，夹爪不动作；两次 Enter 确认、自动停止、Ctrl-C 停止。
 - `scripts/teleop_six_axis_gated.py`：Phase-A 六轴顺序门控测试。J1--J6 均可选择，但同一时刻只允许一个 leader 轴改变目标；停住 0.35 秒后锁存该目标，再选择下一轴。夹爪始终冻结。
+- `scripts/teleop_multi_axis_limited.py`：显式指定的同时多轴测试。仅 `--axes` 列出的关节会同时跟随，其它轴锁定在 session zero；夹爪冻结。先验证两轴组合，再逐步扩大组合，最后才考虑显式列出全部六轴。
 - xArm 进入 servo mode 后会等待控制箱报告实际 mode=1，再发送第一条关节目标，避免启动阶段的 `mode: 1 (0)` SDK 警告。
 - `safe` 与 `responsive` 运动档位：默认 `safe` 保持 `0.004 rad/周期`、`0.20 rad/s`；显式 `--profile responsive` 才使用 `0.005 rad/周期`、`0.25 rad/s`。两项限制必须同步提高，单独传入 `--max-velocity-rad-s 0.25` 不会绕过 `safe` 档的步长上限。
 - `teleop_single_axis.py --diagnostics-output`：可选地将超过发送时延阈值的周期写入本地 JSON，包含 tick、leader raw 增量、请求目标、限幅目标和发送耗时；不增加任何硬件读取或控制命令。
@@ -145,23 +146,24 @@ max velocity：0.20 rad/s
 5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
 6. `Ctrl-C` 是软件受控停止请求，不代替实体急停。若 xArm 仍在运动、终端卡住或状态不明确，优先使用实体急停或 xArm Studio Stop；确认机器人停止后，再在另一终端用 `pgrep -af teleop_six_axis_gated.py` 找到进程并以 `kill -KILL <PID>` 清理卡住的 Python 进程。
 
-## Phase-A 当前结论与下一步
+## 下一步：显式双轴同时跟随测试
 
-Phase-A 的 J1--J6 单轴映射、safe/responsive 顺序门控和单次 Ctrl-C 受控停止均已通过实机验证。当前可使用 `teleop_six_axis_gated.py --profile responsive` 进行受控顺序关节遥操作；夹爪仍冻结，且控制箱偶发长尾意味着它不适合作为自由同时六轴跟随。
+Phase-A 的 J1--J6 单轴映射、safe/responsive 顺序门控和单次 Ctrl-C 受控停止均已通过实机验证。现在开始验证真正的同时多轴跟随，但不能直接启用普通全轴映射：被动 leader 的副轴耦合会被误解为操作者意图。先明确选择 J1+J2，未选择的四轴必须保持锁定；夹爪仍冻结。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
 
-.conda/bin/python scripts/teleop_six_axis_gated.py \
+.conda/bin/python scripts/teleop_multi_axis_limited.py \
+  --axes shoulder_pan,shoulder_lift \
   --leader configs/hardware/gello_ids_1_7.local.yaml \
   --xarm-ip <XARM_IP> \
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
   --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
   --rate-hz 50 \
-  --profile responsive
+  --profile safe
 ```
 
-每次仅顺序操作：移动一轴、停住并等待 `[锁存]`、再移动下一轴。下一项软件工作是将已标定的 leader 扳机接入标准 xArm Gripper，并保持独立的夹爪安全边界；之后才考虑录制与 Phase B 低耦合 leader 机械结构。
+先同时、小幅移动 J1 与 J2；确认它们均方向正确、其它四轴不动且 Ctrl-C 正常后，再测试其它两轴组合。仅当所有组合验证完成，才会创建“显式六轴”受限测试；这仍不同于不加选择的自由全轴映射。
 
 ## 后续架构路线
 

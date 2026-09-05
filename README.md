@@ -215,6 +215,25 @@ python scripts/gello_joint_direction_check.py \
 
 若某一轴在响应档出现卡顿，可给单轴脚本添加 `--diagnostics-output results/diagnostics/<axis>.json`。该可选日志只记录超过 30 ms 的 xArm 发送长尾及其控制输入，不会在循环中额外读取机器人状态或发送额外命令。
 
+### 显式同时多轴测试
+
+`teleop_multi_axis_limited.py` 用于验证两个或多个**明确指定**的 xArm 轴能否同时跟随。它只允许 `--axes` 中列出的轴移动，未列出的轴始终锁定在 session zero；夹爪冻结。不要直接把全部六轴作为首次测试，因为 passive leader 的机械副轴随动可能被映射为错误命令。
+
+首次从 J1+J2 开始，并用 `safe` 档：
+
+```bash
+.conda/bin/python scripts/teleop_multi_axis_limited.py \
+  --axes shoulder_pan,shoulder_lift \
+  --leader configs/hardware/gello_ids_1_7.local.yaml \
+  --xarm configs/hardware/xarm6_standard_gripper.yaml \
+  --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
+  --xarm-ip <XARM_IP> \
+  --rate-hz 50 \
+  --profile safe
+```
+
+仅在该组合方向正确、未选择轴保持不动、停止流程正常后，再测试其它组合。最终的显式六轴测试也必须把所有六个关节写入 `--axes`，不能使用普通未门控的 `xarm6-gello teleop`。
+
 ## 设计约束
 
 - 内部关节单位一律为弧度；只在 DXL 驱动边界使用 raw counts。
