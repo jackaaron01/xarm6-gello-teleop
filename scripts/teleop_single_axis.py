@@ -164,11 +164,12 @@ def main() -> None:
     xarm.send_joint_target(previous.joints_rad)
     print("单轴低速测试已开始；只缓慢移动 leader 的测试轴，Ctrl-C 可立即停止。")
 
+    stop_requested = False
+
     def stop_on_signal(signum: int, frame: object) -> None:
-        xarm.stop()
-        xarm.disconnect()
-        leader.disconnect()
-        raise SystemExit(f"收到信号 {signum}，已停止。")
+        nonlocal stop_requested
+        stop_requested = True
+        print(f"\n收到停止请求 {signum}：不再发送新目标，正在执行受控停止。")
 
     signal.signal(signal.SIGINT, stop_on_signal)
     signal.signal(signal.SIGTERM, stop_on_signal)
@@ -183,13 +184,15 @@ def main() -> None:
     leader_read_max_s = 0.0
     xarm_send_max_s = 0.0
     long_send_events: list[dict[str, float | int | str]] = []
-    while time.monotonic() - started_s < args.duration_s:
+    while not stop_requested and time.monotonic() - started_s < args.duration_s:
         loop_s = time.monotonic()
         read_started_s = time.monotonic()
         raw = leader.read_raw()
         read_elapsed_s = time.monotonic() - read_started_s
         leader_read_total_s += read_elapsed_s
         leader_read_max_s = max(leader_read_max_s, read_elapsed_s)
+        if stop_requested:
+            break
         requested = requested_axis_target(axis_index, zero_raw, zero_xarm, raw, calibration)
         target = limiter.apply(requested, previous.joints_rad, loop_s - previous_tick_s)
         send_started_s = time.monotonic()
@@ -213,6 +216,8 @@ def main() -> None:
         previous = target
         previous_tick_s = loop_s
         tick_count += 1
+        if stop_requested:
+            break
         next_deadline_s += period_s
         remaining_s = next_deadline_s - time.monotonic()
         if remaining_s > 0:
@@ -223,10 +228,15 @@ def main() -> None:
             # Start a fresh period instead, then read the newest leader state.
             next_deadline_s = time.monotonic() + period_s
             time.sleep(period_s)
+    if stop_requested:
+        print("停止请求已处理：正在向 xArm 发送停止状态。")
     xarm.stop()
     xarm.disconnect()
     leader.disconnect()
     elapsed_s = time.monotonic() - started_s
+    if tick_count == 0:
+        print("单轴测试在发送首条流式目标前结束；未发送夹爪命令。")
+        return
     if args.diagnostics_output is not None:
         diagnostics = {
             "axis": args.axis,

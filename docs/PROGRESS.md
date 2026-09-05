@@ -96,6 +96,7 @@ J6          -1      5.6068
 - xArm 进入 servo mode 后会等待控制箱报告实际 mode=1，再发送第一条关节目标，避免启动阶段的 `mode: 1 (0)` SDK 警告。
 - `safe` 与 `responsive` 运动档位：默认 `safe` 保持 `0.004 rad/周期`、`0.20 rad/s`；显式 `--profile responsive` 才使用 `0.005 rad/周期`、`0.25 rad/s`。两项限制必须同步提高，单独传入 `--max-velocity-rad-s 0.25` 不会绕过 `safe` 档的步长上限。
 - `teleop_single_axis.py --diagnostics-output`：可选地将超过发送时延阈值的周期写入本地 JSON，包含 tick、leader raw 增量、请求目标、限幅目标和发送耗时；不增加任何硬件读取或控制命令。
+- 单轴与六轴脚本的 `Ctrl-C`：信号处理只设置停止请求，不在信号回调中同步调用 xArm SDK；当前发送调用返回后，循环停止发送新目标，再在主流程中发送一次受控停止。这避免控制箱偶发长响应时在信号回调中重复阻塞。
 
 普通 `xarm6-gello teleop` 仍不可直接使用：它尚未接入 passive leader 的主导关节门控，不要运行。
 
@@ -140,6 +141,7 @@ max velocity：0.20 rad/s
 3. 仅执行 `teleop_single_axis.py` 的已验证轴；不要执行普通 `teleop`。
 4. 单轴测试结束后 xArm 会停在最终目标，不会自动回 P0；下一次前由 xArm Studio 低速回到安全姿态。
 5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
+6. `Ctrl-C` 是软件受控停止请求，不代替实体急停。若 xArm 仍在运动、终端卡住或状态不明确，优先使用实体急停或 xArm Studio Stop；确认机器人停止后，再在另一终端用 `pgrep -af teleop_six_axis_gated.py` 找到进程并以 `kill -KILL <PID>` 清理卡住的 Python 进程。
 
 ## 下一步：responsive 六轴顺序门控验证
 

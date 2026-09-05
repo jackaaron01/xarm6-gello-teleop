@@ -88,11 +88,12 @@ def main() -> None:
     xarm.send_joint_target(previous.joints_rad)
     print("六轴门控测试已开始：移动一个 leader 轴后停住约 0.35 秒，再移动下一轴。")
 
+    stop_requested = False
+
     def stop_on_signal(signum: int, frame: object) -> None:
-        xarm.stop()
-        xarm.disconnect()
-        leader.disconnect()
-        raise SystemExit(f"收到信号 {signum}，已停止。")
+        nonlocal stop_requested
+        stop_requested = True
+        print(f"\n收到停止请求 {signum}：不再发送新目标，正在执行受控停止。")
 
     signal.signal(signal.SIGINT, stop_on_signal)
     signal.signal(signal.SIGTERM, stop_on_signal)
@@ -106,13 +107,15 @@ def main() -> None:
     xarm_send_total_s = 0.0
     leader_read_max_s = 0.0
     xarm_send_max_s = 0.0
-    while time.monotonic() - started_s < args.duration_s:
+    while not stop_requested and time.monotonic() - started_s < args.duration_s:
         loop_s = time.monotonic()
         read_started_s = time.monotonic()
         raw = leader.read_raw()
         read_elapsed_s = time.monotonic() - read_started_s
         leader_read_total_s += read_elapsed_s
         leader_read_max_s = max(leader_read_max_s, read_elapsed_s)
+        if stop_requested:
+            break
         update = gate.update(raw, loop_s)
         target = limiter.apply(update.requested, previous.joints_rad, loop_s - previous_tick_s)
         if update.activated_index is not None:
@@ -128,6 +131,8 @@ def main() -> None:
         previous = target
         previous_tick_s = loop_s
         tick_count += 1
+        if stop_requested:
+            break
         next_deadline_s += period_s
         remaining_s = next_deadline_s - time.monotonic()
         if remaining_s > 0:
@@ -136,10 +141,15 @@ def main() -> None:
             missed_deadlines += 1
             next_deadline_s = time.monotonic() + period_s
             time.sleep(period_s)
+    if stop_requested:
+        print("停止请求已处理：正在向 xArm 发送停止状态。")
     xarm.stop()
     xarm.disconnect()
     leader.disconnect()
     elapsed_s = time.monotonic() - started_s
+    if tick_count == 0:
+        print("六轴门控测试在发送首条流式目标前结束；未发送夹爪命令。")
+        return
     print(
         f"六轴门控测试结束，已停止 xArm；未发送夹爪命令。实际 {tick_count / elapsed_s:.1f} Hz，"
         f"超时周期 {missed_deadlines}/{tick_count}。\n"
