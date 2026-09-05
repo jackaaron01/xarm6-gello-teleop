@@ -92,6 +92,7 @@ J6          -1      5.6068
 - `scripts/fit_relative_calibration.py`：可为同一关节提供多组姿态对，方向一致时取 gain 中位数。
 - `scripts/preview_mapping.py`：只读映射预览；使用 Phase-A 主导关节门控，抑制被动 leader 副轴随动。
 - `scripts/teleop_single_axis.py`：首次实机单轴 servo 测试。只允许指定 xArm 轴运动，锁定其它五轴，夹爪不动作；两次 Enter 确认、自动停止、Ctrl-C 停止。
+- `scripts/teleop_six_axis_gated.py`：Phase-A 六轴顺序门控测试。J1--J6 均可选择，但同一时刻只允许一个 leader 轴改变目标；停住 0.35 秒后锁存该目标，再选择下一轴。夹爪始终冻结。
 - xArm 进入 servo mode 后会等待控制箱报告实际 mode=1，再发送第一条关节目标，避免启动阶段的 `mode: 1 (0)` SDK 警告。
 
 普通 `xarm6-gello teleop` 仍不可直接使用：它尚未接入 passive leader 的主导关节门控，不要运行。
@@ -123,7 +124,7 @@ max velocity：0.20 rad/s
 - J1：可动，初始低频振动通过提高 FTDI 低延迟与平滑节拍解决。
 - J2：可动，40 Hz 时实际 39.7 Hz，链路稳定。
 - J4：可动，50 Hz/0.20 rad/s 时稳定通过。
-- J6：能动、`diagnose-xarm` 无错误，但 servo 调用存在明显长尾（最大 457 ms、178 ms 等）；首版暂时固定 J6，不纳入实时控制。
+- J6：方向正确。50 Hz/0.15 rad/s 时仍有可感知延迟（最大发送 186.23 ms）；提高到 0.20 rad/s 后复测实际 49.7 Hz、超时 1/498、leader 读取平均 2.05 ms、xArm servo 发送平均 1.46 ms（最大 48.43 ms），可纳入受门控保护的六轴测试。
 - J3：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 48.4 Hz，leader 读取平均 2.06 ms，超时 3/484。
 - J5：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 50.0 Hz，零超时（0/500），leader 读取平均 2.06 ms，xArm servo 发送平均 1.41 ms，最大 12.47 ms。
 
@@ -133,26 +134,25 @@ max velocity：0.20 rad/s
 2. 本地测试用真实 IP；远程使用路由器映射时从 `--rate-hz 40` 开始，不要直接要求 100 Hz。
 3. 仅执行 `teleop_single_axis.py` 的已验证轴；不要执行普通 `teleop`。
 4. 单轴测试结束后 xArm 会停在最终目标，不会自动回 P0；下一次前由 xArm Studio 低速回到安全姿态。
-5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。当前 J1--J5 已通过单轴实机验证；J6 因历史 servo 长尾暂时冻结，夹爪也暂时冻结。
+5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
 
-## 下一步：J6 延迟诊断与六轴联动准备
+## 下一步：六轴顺序主导门控测试
 
-J1--J5 已完成单轴实机验证。下一步先诊断 J6 的历史 servo 长尾，再把它纳入受主导关节门控保护的六轴 Phase-A 联动测试；夹爪仍不接入该测试。
+J1--J6 已完成单轴验证。首次联动使用顺序主导门控：移动一个 leader 轴，停住约 0.35 秒，待程序打印“锁存”后再移动下一轴。这样可保留前一轴的 xArm 目标，并隔离 passive leader 的副轴随动；它不是自由的六轴同时运动。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
 
-.conda/bin/python scripts/teleop_single_axis.py \
-  --axis wrist_3 \
+.conda/bin/python scripts/teleop_six_axis_gated.py \
   --leader configs/hardware/gello_ids_1_7.local.yaml \
   --xarm-ip <XARM_IP> \
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
   --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
   --rate-hz 50 \
-  --max-velocity-rad-s 0.15
+  --max-velocity-rad-s 0.20
 ```
 
-控制箱应在程序打印“单轴低速测试已开始”前完成 mode=1 确认。只有 J6 在稳定频率与可接受长尾下通过后，才开放六轴 Phase-A 联动；若方向不符或再次出现明显卡顿，立即 Ctrl-C。
+控制箱应在程序打印“六轴门控测试已开始”前完成 mode=1 确认。每次先只试 J1 与 J2；确认选择/锁存行为正确后，才逐步试 J3--J6。若主导轴识别错误、方向不符或出现明显卡顿，立即 Ctrl-C。
 
 ## 后续架构路线
 

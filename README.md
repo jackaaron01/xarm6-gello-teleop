@@ -191,6 +191,24 @@ python scripts/gello_joint_direction_check.py \
 
 `--xarm-ip` 只填写 IP，例如 `--xarm-ip 192.168.1.100`；不要附加 `:502`。SDK 会自行使用 xArm 的默认网络通信方式，附加端口会被误判为串口路径。
 
+### 六轴顺序主导门控测试
+
+在 J1--J6 都通过单轴验证后，使用 `teleop_six_axis_gated.py` 进行首个六轴 Phase-A 测试。它并非六轴自由同时跟随：被动 leader 存在机械随动，所以程序一次仅选择 raw 位移最大的一个关节；该轴停止 `0.35` 秒后，程序锁存已到达的 xArm 目标，再允许选择下一轴。这样可按顺序构建六轴姿态，同时避免副轴跟随。
+
+夹爪在此模式中仍完全冻结。开始时仅测试 J1 与 J2 的选择/锁存行为，确认稳定后再加入 J3--J6。
+
+```bash
+.conda/bin/python scripts/teleop_six_axis_gated.py \
+  --leader configs/hardware/gello_ids_1_7.local.yaml \
+  --xarm configs/hardware/xarm6_standard_gripper.yaml \
+  --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
+  --xarm-ip <XARM_IP> \
+  --rate-hz 50 \
+  --max-velocity-rad-s 0.20
+```
+
+每次只移动一个 leader 关节，停住约 0.35 秒，待终端打印 `[锁存]` 后再移动下一轴。若 `[选择]` 显示的关节与实际移动的关节不一致，或发生明显卡顿/方向异常，立即 `Ctrl-C`。
+
 ## 设计约束
 
 - 内部关节单位一律为弧度；只在 DXL 驱动边界使用 raw counts。
