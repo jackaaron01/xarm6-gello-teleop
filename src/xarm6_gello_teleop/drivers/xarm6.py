@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from xarm.wrapper import XArmAPI
 
 from ..config import GripperConfig
 from ..types import six
+
+
+SERVO_MODE = 1
+SERVO_MODE_READY_TIMEOUT_S = 2.0
+SERVO_MODE_READY_POLL_S = 0.02
 
 
 @dataclass
@@ -62,8 +68,9 @@ class XArm6:
         """Enable only after explicit user confirmation; this method still sends no joint target."""
         arm = self._require_connection()
         self._check(arm.motion_enable(enable=True), "motion_enable")
-        self._check(arm.set_mode(1), "set servo motion mode")
+        self._check(arm.set_mode(SERVO_MODE), "set servo motion mode")
         self._check(arm.set_state(0), "set ready state")
+        self._wait_for_servo_mode()
         self._check(arm.set_gripper_mode(0), "set gripper position mode")
         self._check(arm.set_gripper_enable(True), "enable standard gripper")
         self._check(arm.set_gripper_speed(gripper.speed), "set gripper speed")
@@ -72,8 +79,22 @@ class XArm6:
         """Enable xArm joint servo mode while leaving the gripper untouched."""
         arm = self._require_connection()
         self._check(arm.motion_enable(enable=True), "motion_enable")
-        self._check(arm.set_mode(1), "set servo motion mode")
+        self._check(arm.set_mode(SERVO_MODE), "set servo motion mode")
         self._check(arm.set_state(0), "set ready state")
+        self._wait_for_servo_mode()
+
+    def _wait_for_servo_mode(self) -> None:
+        """Wait for the controller report stream to acknowledge joint servo mode."""
+        arm = self._require_connection()
+        deadline_s = time.monotonic() + SERVO_MODE_READY_TIMEOUT_S
+        while time.monotonic() < deadline_s:
+            if arm.mode == SERVO_MODE:
+                return
+            time.sleep(SERVO_MODE_READY_POLL_S)
+        raise RuntimeError(
+            f"xArm did not report servo mode {SERVO_MODE} within "
+            f"{SERVO_MODE_READY_TIMEOUT_S:.1f} s (reported mode: {arm.mode})"
+        )
 
     def send_joint_target(self, joints_rad: tuple[float, ...]) -> None:
         arm = self._require_connection()

@@ -1,11 +1,11 @@
 # xArm6 GELLO 遥操作进度记录
 
-最后更新：2026-09-04
+最后更新：2026-09-05
 
 ## 代码仓库与发布状态
 
 - 项目已在本目录建立独立 Git 仓库，默认分支为 `main`；它与上级 Evo-RL 工作树相互独立。
-- 本地基线提交：`d182565 初始提交：xArm6 GELLO 遥操作`。
+- 当前公开基线提交：`1f49762 初始提交：xArm6 GELLO 遥操作`。
 - GitHub 远端：`https://github.com/jackaaron01/xarm6-gello-teleop.git`。
 - 首次 HTTPS 推送曾收到 GitHub `403 Permission denied`。本地的旧凭据缓存已清除；必须使用属于 `jackaaron01`、且对该仓库具有 `Contents: Read and write` 权限的 Fine-grained Personal Access Token（PAT）重新推送。
 - PAT 绝不能写进 README、配置文件、提交历史或聊天记录。推送成功后可改用 SSH key，避免日常输入 Token。
@@ -72,7 +72,7 @@ J1          -1      7.1135
 J2          +1      4.4989
 J3          -1     10.4508  （2026-09-05 实机单轴方向修正，后续重点复核）
 J4          -1      4.6426
-J5          -1      4.3863  （采用大行程重复样本）
+J5          +1      4.3863  （2026-09-05 实机单轴方向修正，后续重点复核）
 J6          -1      5.6068
 ```
 
@@ -82,7 +82,7 @@ J6          -1      5.6068
 
 - J3：原始样本 `+115 raw / +0.3414 rad`，重复样本 `+160 raw / +0.3414 rad`；比例取中位数。2026-09-05 的首次实机单轴测试显示该符号与期望物理方向相反，当前候选配置已将 J3 `sign` 手动修正为 `-1`。后续需在正确期望方向下重采 J3 姿态对，确认比例是否仍合适。
 - J5：旧样本仅 `-96/-124 raw` 且与大行程样本方向冲突，未纳入最新候选文件。
-- J5 最新有效样本：`+327 raw / -0.3502 rad`，方向 `sign=-1`，已通过相对 P0 单轴校验。
+- J5 最新有效样本：`+327 raw / -0.3502 rad`。2026-09-05 的首次实机单轴测试显示候选方向与期望物理方向相反，当前候选配置已将 J5 `sign` 手动修正为 `+1`；后续需在正确期望方向下重采姿态对，确认比例。
 
 ## 软件已实现
 
@@ -92,6 +92,7 @@ J6          -1      5.6068
 - `scripts/fit_relative_calibration.py`：可为同一关节提供多组姿态对，方向一致时取 gain 中位数。
 - `scripts/preview_mapping.py`：只读映射预览；使用 Phase-A 主导关节门控，抑制被动 leader 副轴随动。
 - `scripts/teleop_single_axis.py`：首次实机单轴 servo 测试。只允许指定 xArm 轴运动，锁定其它五轴，夹爪不动作；两次 Enter 确认、自动停止、Ctrl-C 停止。
+- xArm 进入 servo mode 后会等待控制箱报告实际 mode=1，再发送第一条关节目标，避免启动阶段的 `mode: 1 (0)` SDK 警告。
 
 普通 `xarm6-gello teleop` 仍不可直接使用：它尚未接入 passive leader 的主导关节门控，不要运行。
 
@@ -123,8 +124,8 @@ max velocity：0.20 rad/s
 - J2：可动，40 Hz 时实际 39.7 Hz，链路稳定。
 - J4：可动，50 Hz/0.20 rad/s 时稳定通过。
 - J6：能动、`diagnose-xarm` 无错误，但 servo 调用存在明显长尾（最大 457 ms、178 ms 等）；首版暂时固定 J6，不纳入实时控制。
-- J3：只读预览的主导关节门控通过；首次实机单轴测试发现方向相反，已将候选配置的 `sign` 翻转为 `-1`，等待低速复测。
-- J5：只读预览的主导关节门控通过，尚未进行实机单轴 teleop。
+- J3：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 48.4 Hz，leader 读取平均 2.06 ms，超时 3/484。
+- J5：只读预览的主导关节门控通过；首次实机单轴测试发现方向相反，已将候选配置的 `sign` 翻转为 `+1`，等待低速复测。
 
 ## 当前安全边界
 
@@ -134,23 +135,24 @@ max velocity：0.20 rad/s
 4. 单轴测试结束后 xArm 会停在最终目标，不会自动回 P0；下一次前由 xArm Studio 低速回到安全姿态。
 5. J6 当前冻结；夹爪当前冻结。
 
-## 下次继续的第一步
+## 下一步：J5 低速单轴复测
 
-先做 **J3 只读映射预览**，不使能、不移动 xArm：
+J3/J5 的只读预览均已通过，J3 实机复测也已通过。先在 xArm Studio 低速回到安全姿态，再以 J5 的已修正方向进行低速单轴复测：
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
 
-.conda/bin/python scripts/preview_mapping.py \
-  --leader-port <LEADER_PORT> \
+.conda/bin/python scripts/teleop_single_axis.py \
+  --axis wrist_2 \
+  --leader configs/hardware/gello_ids_1_7.local.yaml \
   --xarm-ip <XARM_IP> \
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
-  --calibration configs/calibration/gello_to_xarm6.candidate.yaml
+  --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
+  --rate-hz 50 \
+  --max-velocity-rad-s 0.15
 ```
 
-将 xArm 与 leader 放在同一安全起始姿态；第一次 Enter 记录 session zero，之后只手动移动 leader J3 约 5--10°，第二次 Enter 查看门控预测。期望：主导轴为 `elbow_flex`，只有该轴存在明显预测变化，xArm 实际角度保持不变。
-
-J3/J5 的只读预览均已通过。下一步先以 J3 的已修正方向进行低速单轴复测；通过后再以相同安全参数测试 J5。
+控制箱应在程序打印“单轴低速测试已开始”前完成 mode=1 确认。若方向仍不符，立即 Ctrl-C，不继续测试其它轴。
 
 ## 后续架构路线
 
