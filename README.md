@@ -234,11 +234,28 @@ python scripts/gello_joint_direction_check.py \
 
 仅在该组合方向正确、未选择轴保持不动、停止流程正常后，再测试其它组合。最终的显式六轴测试也必须把所有六个关节写入 `--axes`，不能使用普通未门控的 `xarm6-gello teleop`。
 
+已完成全部六轴方向验证后，可用下面的持续测试命令。`--duration-s 0` 表示不设时间上限，首次 `Ctrl-C` 停止跟随并以低速回到 P0 `[0,-35,-40,0,80,0]`（J1--J6，单位为度），然后停止 xArm；在回程期间再按一次 `Ctrl-C` 会取消回程并停止。该软件停止不替代实体急停。
+
+```bash
+.conda/bin/python scripts/teleop_multi_axis_limited.py \
+  --axes shoulder_pan,shoulder_lift,elbow_flex,wrist_1,wrist_2,wrist_3 \
+  --leader configs/hardware/gello_ids_1_7.local.yaml \
+  --xarm configs/hardware/xarm6_standard_gripper.yaml \
+  --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
+  --xarm-ip <XARM_IP> \
+  --rate-hz 50 \
+  --profile safe \
+  --duration-s 0 \
+  --return-joints-deg 0,-35,-40,0,80,0
+```
+
+回程默认最高 `0.15 rad/s`、每周期最多 `0.003 rad`、最长 30 秒。只有明确确认工作区无障碍、reduced mode 和实体急停就绪时才可运行；若 P0 不适合当前现场，先停止并用 `--return-joints-deg` 显式改为安全姿态。
+
 ## 设计约束
 
 - 内部关节单位一律为弧度；只在 DXL 驱动边界使用 raw counts。
 - leader raw、标定后的关节目标、限幅后的目标、xArm 实际反馈应分别记录；录制器会在下一小版本接入，核心接口已预留。
 - 每次指令均经过关节范围、每周期最大变化和速度限制；leader 数据过期或 xArm 返回错误时进入故障状态并停止发送新目标。
-- 不自动执行回零、P0 或夹爪开合。任何移动到起始姿态的功能必须作为独立、人工确认的命令实现。
+- 常规脚本不自动执行回零、P0 或夹爪开合；只有 `teleop_multi_axis_limited.py` 的显式持续六轴测试在退出时会以独立低速限制回到命令行明确显示的 P0。
 
 更完整的两期机械与软件改造清单见 [docs/architecture.md](docs/architecture.md)。

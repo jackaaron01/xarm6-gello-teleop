@@ -1,5 +1,6 @@
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
+from math import isclose, radians
 from pathlib import Path
 
 
@@ -13,6 +14,30 @@ SPEC.loader.exec_module(MODULE)
 
 def test_parse_axes_requires_two_unique_known_axes() -> None:
     assert MODULE.parse_axes("shoulder_pan,wrist_3") == ("shoulder_pan", "wrist_3")
+
+
+def test_parse_return_pose_uses_six_degree_values() -> None:
+    assert MODULE.parse_six_joint_degrees("0,-35,-40,0,80,0") == (
+        0.0,
+        radians(-35),
+        radians(-40),
+        0.0,
+        radians(80),
+        0.0,
+    )
+
+
+def test_return_target_step_is_bounded_and_converges_to_p0() -> None:
+    limiter = MODULE.JointSafetyLimiter((-3.0,) * 6, (3.0,) * 6, 0.003, 0.15)
+    start = MODULE.TeleopTarget((0.0, 0.0, 0.0, 0.0, 0.0, 0.0), 0.0)
+    p0 = MODULE.parse_six_joint_degrees("0,-35,-40,0,80,0")
+    first = MODULE.return_target_step(limiter, start, p0, 0.02)
+    assert first.joints_rad == (0.0, -0.003, -0.003, 0.0, 0.003, 0.0)
+
+    target = start
+    for _ in range(600):
+        target = MODULE.return_target_step(limiter, target, p0, 0.02)
+    assert all(isclose(actual, expected) for actual, expected in zip(target.joints_rad, p0, strict=True))
 
 
 def test_allowed_axes_target_holds_unselected_axes() -> None:
