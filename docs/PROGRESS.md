@@ -127,7 +127,7 @@ max velocity：0.20 rad/s
 - J2：可动，40 Hz 时实际 39.7 Hz，链路稳定。
 - J4：可动，50 Hz/0.20 rad/s 时稳定通过。
 - J6：方向正确。50 Hz/0.15 rad/s 时仍有可感知延迟（最大发送 186.23 ms）；提高到 0.20 rad/s 后复测实际 49.7 Hz、超时 1/498、leader 读取平均 2.05 ms、xArm servo 发送平均 1.46 ms（最大 48.43 ms），可纳入受门控保护的六轴测试。
-- J6 responsive：方向正确、仅有轻微卡顿、无其它异常；但实际 45.5 Hz、超时 9/456、xArm servo 最大 183.41 ms，未通过响应档的性能验收。六轴门控继续使用 `safe` 档；需先采集长尾诊断再决定 J6 专属策略。
+- J6 responsive：首次复测方向正确、仅有轻微卡顿、无其它异常；当时实际 45.5 Hz、超时 9/456、xArm servo 最大 183.41 ms。随后使用长尾诊断重测，实际 50.0 Hz、零超时（0/500）、leader 读取平均 2.06 ms、xArm servo 平均 1.41 ms、最大 15.62 ms，零个超过 30 ms 的事件。长尾当前判定为偶发控制箱/链路抖动，而非 J6 固有瓶颈；响应档可进入受控六轴门控验证。
 - 六轴顺序门控：J1--J6 已在同一 20 秒 session 内依次完成“选择→锁存”；实际 48.5 Hz、超时 6/971、leader 读取平均 2.06 ms、xArm servo 发送平均 2.00 ms。期间存在一次 183.84 ms 发送长尾，脚本已丢弃过期节拍；该模式目前仅作为受控顺序测试，不开放自由同时六轴跟随。
 - 六轴顺序门控的操作者验收：J1--J6 方向全部正确，锁存后姿态保持，无漂移或异常动作；仅存在轻微延迟感。当前 `0.20 rad/s` 与每周期 `0.004 rad` 限制共同形成约 `0.20 rad/s` 的实际速度上限，后续响应优化必须同时调整两者并重新做小行程安全验证。
 - J3：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 48.4 Hz，leader 读取平均 2.06 ms，超时 3/484。
@@ -141,25 +141,23 @@ max velocity：0.20 rad/s
 4. 单轴测试结束后 xArm 会停在最终目标，不会自动回 P0；下一次前由 xArm Studio 低速回到安全姿态。
 5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
 
-## 下一步：J6 responsive 长尾诊断
+## 下一步：responsive 六轴顺序门控验证
 
-J1--J6 已完成单轴验证与一次完整的 safe 档顺序门控 session。J6 在 responsive 档出现轻微卡顿与长尾恶化，因此不要将 responsive 用于六轴门控；先采集控制路径数据，判断长尾是否对应特定 raw/目标变化。它不是自由的六轴同时运动。
+J1--J6 已完成单轴验证与一次完整的 safe 档顺序门控 session；J6 responsive 的长尾诊断重测也已通过。下一步在 reduced mode 下运行一次 responsive 六轴顺序门控；先试 J1/J2，再逐步加入 J3--J6。它不是自由的六轴同时运动。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
 
-.conda/bin/python scripts/teleop_single_axis.py \
-  --axis shoulder_pan \
+.conda/bin/python scripts/teleop_six_axis_gated.py \
   --leader configs/hardware/gello_ids_1_7.local.yaml \
   --xarm-ip <XARM_IP> \
   --xarm configs/hardware/xarm6_standard_gripper.yaml \
   --calibration configs/calibration/gello_to_xarm6.candidate.yaml \
   --rate-hz 50 \
-  --profile responsive \
-  --diagnostics-output results/diagnostics/j6_responsive.json
+  --profile responsive
 ```
 
-将 `--axis shoulder_pan` 改为 `--axis wrist_3`；脚本结束后把 JSON 与终端统计一并提供。若方向不符、明显卡顿加重或发生异常动作，立即 Ctrl-C。J6 原因未明确前，不运行 `teleop_six_axis_gated.py --profile responsive`。
+先执行 J1/J2 的选择与锁存；若正常再逐步加入 J3--J6。若主导关节识别错误、方向不符、明显卡顿加重或发生异常动作，立即 Ctrl-C，并保留终端统计。
 
 ## 后续架构路线
 
