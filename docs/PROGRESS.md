@@ -132,6 +132,7 @@ max velocity：0.20 rad/s
 - 六轴顺序门控：J1--J6 已在同一 20 秒 session 内依次完成“选择→锁存”；实际 48.5 Hz、超时 6/971、leader 读取平均 2.06 ms、xArm servo 发送平均 2.00 ms。期间存在一次 183.84 ms 发送长尾，脚本已丢弃过期节拍；该模式目前仅作为受控顺序测试，不开放自由同时六轴跟随。
 - 六轴顺序门控的操作者验收：J1--J6 方向全部正确，锁存后姿态保持，无漂移或异常动作；仅存在轻微延迟感。当前 `0.20 rad/s` 与每周期 `0.004 rad` 限制共同形成约 `0.20 rad/s` 的实际速度上限，后续响应优化必须同时调整两者并重新做小行程安全验证。
 - 六轴 responsive：40 秒 session 中 J1--J6 均至少完成一次“选择→锁存”，允许同一轴在后续再次被选择；脚本正常按时退出。实际 48.3 Hz、超时 11/1933、leader 读取平均 2.05 ms、xArm servo 发送平均 2.13 ms，但最大 198.57 ms；responsive 六轴功能可用，控制箱偶发长尾仍需保守看待。该运行未触发 Ctrl-C，停止修复尚未做实机回归验证。
+- 软件停止回归：responsive 六轴 session 中单次 Ctrl-C 后，脚本打印停止请求、停止发送新目标、执行 xArm stop 并正常返回终端；实际 50.0 Hz、零超时（0/618）、leader 读取平均 2.06 ms、xArm servo 发送平均 1.58 ms（最大 15.16 ms）。停止修复已通过实机验证。
 - J3：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 48.4 Hz，leader 读取平均 2.06 ms，超时 3/484。
 - J5：方向修正后复测通过；50 Hz/0.15 rad/s 时实际 50.0 Hz，零超时（0/500），leader 读取平均 2.06 ms，xArm servo 发送平均 1.41 ms，最大 12.47 ms。
 
@@ -144,9 +145,9 @@ max velocity：0.20 rad/s
 5. xArm 物理上是 6 个关节轴（J1--J6）加一个标准夹爪。J1--J6 已通过单轴实机验证；首次六轴联动只允许顺序主导关节门控，夹爪继续冻结。
 6. `Ctrl-C` 是软件受控停止请求，不代替实体急停。若 xArm 仍在运动、终端卡住或状态不明确，优先使用实体急停或 xArm Studio Stop；确认机器人停止后，再在另一终端用 `pgrep -af teleop_six_axis_gated.py` 找到进程并以 `kill -KILL <PID>` 清理卡住的 Python 进程。
 
-## 下一步：软件停止回归与响应档长尾观察
+## Phase-A 当前结论与下一步
 
-J1--J6 已完成单轴验证、safe 档顺序门控和 responsive 档的 40 秒顺序门控。下一步先验证修复后的软件停止：在 reduced mode 下开始六轴脚本，确认 J1 选择并锁存一次后只按一次 Ctrl-C，确认脚本打印停止请求并退出。响应档的控制箱偶发长尾仍持续记录；它不是自由的六轴同时运动。
+Phase-A 的 J1--J6 单轴映射、safe/responsive 顺序门控和单次 Ctrl-C 受控停止均已通过实机验证。当前可使用 `teleop_six_axis_gated.py --profile responsive` 进行受控顺序关节遥操作；夹爪仍冻结，且控制箱偶发长尾意味着它不适合作为自由同时六轴跟随。
 
 ```bash
 cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
@@ -160,7 +161,7 @@ cd /home/aaron/workspace/evo-rl-chaozhi/xarm6-gello-teleop
   --profile responsive
 ```
 
-本次只完成 J1 的选择与锁存后按一次 Ctrl-C，不需等待 40 秒结束。若机器人仍在运动、终端卡住或状态不明确，实体急停或 xArm Studio Stop 优先；确认停止后再用另一终端清理进程。
+每次仅顺序操作：移动一轴、停住并等待 `[锁存]`、再移动下一轴。下一项软件工作是将已标定的 leader 扳机接入标准 xArm Gripper，并保持独立的夹爪安全边界；之后才考虑录制与 Phase B 低耦合 leader 机械结构。
 
 ## 后续架构路线
 
